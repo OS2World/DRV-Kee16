@@ -1,0 +1,1105 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+  <head>
+
+    <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+    <title>OS/2 Aurora KEE32 API</title>
+  </head>
+  <body bgcolor="#ffffff">
+    <h4>last change: Apr 26,2000</h4>
+    <h1>OS/2 Aurora KEE32 API</h1>
+    IBM is usually good for hiding easter eggs in every new (seldom
+    enough)
+    version of OS/2. While, with the OS/2 toolkit 4.5 (available through
+    DEVCON),
+    they have documented some treasures from older releases, the new
+    WSeB
+    contains, apparently for JFS, two new APIs, the KEE and the IFSM32.
+    <p>
+      The KEE is the <i>Kernel Execution Environment</i>, basically the
+      32 bit
+      version of what is known as the 16 bit Device Helper API known to
+      every
+      driver programmer. The following describes this API.
+    </p>
+    <p>
+      Unfortunately, it is not yet complete enough to allow writing pure
+      32 bit
+      physical device drivers, as several device helpers don't have a
+      KEE
+      equivalent yet (e.g. DevHlp_SetIRQ), and even worse, there is no
+      32 bit
+      driver strategy/IDC support yet, so you need at least a 16 bit
+      header and
+      some small thunk that converts the 16 bit strategy call into a
+      call of
+      a 32 bit routine in a flat segment of the driver. This is possible
+      and
+      has already been done. The KEE will supposedly greatly reduce the
+      effort
+      of writing (almost) 32 bit drivers. Currently, IBM apparently uses
+      KEE
+      in OS2DASD.DMD and JFS.IFS which are both not exactly PDDs, so
+      won't need
+      a real strategy entry point at all. See PDD, ADD, and IFS docs how
+      they
+      actually interface with the rest of the system.
+    </p>
+    <h1>Header and Lib files</h1>
+    To use the API, you need a 32 bit C compiler. Given the calling
+    conventions,
+    which for basically all functions require CS, DS, ES, and SS to
+    point to
+    flat kernel segments, it seems to me that finally even EMX/gcc is
+    suitable
+    for writing the 32 bit part of the driver.The KEE API<br>
+    <br>
+    The OS/2 DDK contains a header file "bsekee.h" and an import library
+    "kee.lib" which you will find at the following places in the DDK
+    source tree:<br>
+    header file: DDK\base32\rel\os2c\include\base\os2\16bit\bsekee.h<br>
+    import library: DDK\base32\rel\os2c\lib\os2\kee.lib<br>
+    <h2>KernAllocSpinLock</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernAllocSpinLock(KEESpinLock* sl);</code>
+    <h3>Description</h3>
+    Initializes a spinlock to synchronize SMP processor access to a
+    resource.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>sl
+      </dt>
+      <dd>Pointer to a spinlock structure in 32 bit memory.
+      </dd>
+    </dl>
+    <h2>KernFreeSpinLock</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernFreeSpinLock(KEESpinLock* sl);</code>
+    <h3>Description</h3>
+    Destroys a spinlock structure that is no longer in use.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>sl
+      </dt>
+      <dd>Pointer to a spinlock structure.
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    Actually, this routine is supposed to clear the internal "in-use"
+    flag.
+    But in 14.039SMP, it does - nothing. I think this is a bug.
+    <h2>KernAcquireSpinLock</h2>
+    <h3>Synopsis</h3>
+    <code>VOID APIENTRY KernAcquireSpinLock(KEESpinLock* sl);</code>
+    <h3>Description</h3>
+    Try to acquire the spinlock. If another processor already owns the
+    spinlock,
+    the caller will busy wait until the other owner releases the lock,
+    then
+    acquires the lock immediately.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>sl
+      </dt>
+      <dd>Pointer to an initialized spinlock structure-
+      </dd>
+    </dl>
+    <h2>KernReleaseSpinLock</h2>
+    <h3>Synopsis</h3>
+    <code>VOID APIENTRY KernReleaseSpinLock(KEESpinLock* sl);</code>
+    <h3>Description</h3>
+    Release the spinlock by the current owner after use.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>sl
+      </dt>
+      <dd>Pointer to an acquired spinlock structure.
+      </dd>
+    </dl>
+    <h2>KernAllocMutexLock</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernAllocMutexLock(KEEMutexLock* ml);</code>
+    <h3>Description</h3>
+    Initialize a mutexlock. This is basically the semaphore equivalent
+    of
+    a spinlock. Likewise, it is usable to protect critical regions. The
+    difference
+    to a spinlock is that waiting on a mutex will send the thread that
+    processor
+    is executing to sleep. This makes sense - in contrast to a spinlock
+    - for
+    longer critical regions.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>ml
+      </dt>
+      <dd>Pointer to a mutexlock structure in 32 bit memory.
+      </dd>
+    </dl>
+    <h2>KernFreeMutexLock</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernFreeMutexLock(KEEMutexLock* ml);</code>
+    <h3>Description</h3>
+    Destroy a mutexlock.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>ml
+      </dt>
+      <dd>Pointer to a mutexlock.
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    Likewise to KernFreeSpinLock, this is supposed to
+    do something, but doesn't. Again a sloppiness in code.
+    <h2>KernRequestSharedMutex</h2>
+    <h3>Synopsis</h3>
+    <code>VOID APIENTRY KernRequestSharedMutex(KEEMutexLock* ml);</code>
+    <h3>Description</h3>
+    Request a mutex in shared mode. Multiple threads may own the lock.
+    If a thread already owns the lock, then the calling thread will
+    block uninteruptibly. The block id is the address of this mutex. Use
+    KernTryRequestSharedMutex to attempt to acquire the mutexlock
+    without
+    blocking.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>ml
+      </dt>
+      <dd>Pointer to a mutexlock structure.
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    <h2>KernReleaseSharedMutex</h2>
+    <h3>Synopsis</h3>
+    <code>VOID APIENTRY KernReleaseSharedMutex(KEEMutexLock* ml);</code>
+    <h3>Description</h3>
+    Give up an acquired shared mutex.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>
+        <br>
+      </dt>
+      <dd>
+        <br>
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    <h2>KernTryRequestSharedMutex</h2>
+    <h3>Synopsis</h3>
+    <code>INT APIENTRY KernTryRequestSharedMutex(KEEMutexLock* ml);</code>
+    <h3>Description</h3>
+    Try to acquire a shared mutexlock. If this fails, 0 is returned, if
+    it
+    succeeds, the mutexlock is acquired, and 1 is returned.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>ml
+      </dt>
+      <dd>Pointer to a mutexlock structure.
+      </dd>
+    </dl>
+    <h2>KernRequestExclusiveMutex</h2>
+    <h3>Synopsis</h3>
+    <code>VOID APIENTRY KernRequestExclusiveMutex(KEEMutexLock* ml);</code>
+    <h3>Description</h3>
+    Request an exclusively owned mutex. Thread will block with the
+    mutexlock
+    is already owned.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>ml
+      </dt>
+      <dd>Pointer to exclusively owned mutexlock structure.
+      </dd>
+    </dl>
+    <h2>KernReleaseExclusiveMutex</h2>
+    <h3>Synopsis</h3>
+    <code>VOID APIENTRY KernReleaseExclusiveMutex(KEEMutexLock* ml);</code>
+    <h3>Description</h3>
+    Give up an owned exclusively locked structure. If there are threads
+    waiting,
+    they will be unblocked.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>ml
+      </dt>
+      <dd>Pointer to an exclusive owned mutexlock structure.
+      </dd>
+    </dl>
+    <h2>KernTryRequestExclusiveMutex</h2>
+    <h3>Synopsis</h3>
+    <code>INT APIENTRY KernTryRequestExclusiveMutex(KEEMutexLock* ml);</code>
+    <h3>Description</h3>
+    Attempt to acquire an exclusive owned mutex lock. Returns 0 if the
+    request
+    failed, else 1, and the mutexlock is acquired successfully.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>ml
+      </dt>
+      <dd>Pointer to an exclusive mutexlock.
+      </dd>
+    </dl>
+    <h2>KernBlock</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernBlock(ULONG eventid, ULONG timeout, ULONG
+      flags, PVOID lockptr, PULONG retdata);</code>
+    <h3>Description</h3>
+    This is an extended version of the DevHlp_ProcBlock function.
+    Basically, you specify an arbitrary eventid and a timeout. The block
+    may be coordinated
+    with either an acquired spinlock or a mutexlock, as declared by the
+    flags.
+    The lock is released immediately before blocking, and reacquired
+    after
+    returning from the routine, unless the flag bit KEE_BLOCK_NOACQUIRE
+    prevents re-acquiration. The blocked thread will hang in this
+    routine, and can be resurrected by a signal (unless turned off with
+    KEE_BLOCK_NOSIGNALS)
+    or a KernWakeup with the same eventid.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>eventid
+      </dt>
+      <dd>Some unique value, which is to be used by KernWakeup to
+        unblock the
+        thread again.
+      </dd>
+      <dt>timeout
+      </dt>
+      <dd>a timeout value in milliseconds. 0xffffffff is supposedly
+        infinite wait.
+      </dd>
+      <dt>flags
+      </dt>
+      <dd>One or more of the following flags:
+        <dl>
+          <dt>KEE_BLOCK_NOSIGNALS
+          </dt>
+          <dd>Ignore signals, i.e. the block can be released only by end
+            of timeout
+            or an explicit wakeup.
+          </dd>
+          <dt>KEE_BLOCK_SPINLOCK
+          </dt>
+          <dd>The lockptr points to an acquired KEESpinLock structure.
+          </dd>
+          <dt>KEE_BLOCK_EXMUTEXLOCK
+          </dt>
+          <dd>The lockptr points to an acquired exclusive mutexlock
+            structure.
+          </dd>
+          <dt>KEE_BLOCK_SHMUTEXLOCK
+          </dt>
+          <dd>The lockptr points to an acquired shared mutexlock
+            structure.
+          </dd>
+          <dt>KEE_BLOCK_NOACQUIRE
+          </dt>
+          <dd>Don't reacquire the lock (if lockptr points to a lock at
+            all) when the
+            KernBlock routine returns.
+          </dd>
+        </dl>
+      </dd>
+      <dt>lockptr
+      </dt>
+      <dd>Used when one of the three *LOCK bits is set: points to the
+        specified
+        lock structure
+      </dd>
+      <dt>retdata
+      </dt>
+      <dd>points to a long variable that receives the value passed by
+        the KernWakeup
+        routine. May be NULL, in this case the value is ignored.
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    The KEE_NOSIGNALS bit looks dangerous to me - you can this way
+    easily
+    produce unkillable processes: Block in an ioctl with this bit set,
+    and a
+    bug preventing the wakeup, and you won't get rid of this process
+    anymore.
+    The three *LOCK bits are exclusive since there is only one pointer.<br>
+    I guess the retdata value us irrelevant for a timeout or an
+    interrupt
+    by a signal (return values ERROR_TIMEOUT and ERROR_INTERRUPT).
+    <h2>KernWakeup</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernWakeup(ULONG eventid, ULONG flags, PULONG
+      tcnt, ULONG retdata);</code>
+    <h3>Description</h3>
+    This wakes up threads that are blocking in KernBlock. The eventid to
+    be specified
+    has to match the eventid used in KernBlock. It is possible to submit
+    a 32 bit
+    return value to the unblocked thread. The number of threads that are
+    unblocked
+    is returned.
+    must match
+    <h3>Parameters</h3>
+    <dl>
+      <dt>eventid
+      </dt>
+      <dd>Event id of the blocked thread(s).
+      </dd>
+      <dt>flags
+      </dt>
+      <dd>One or more of the following flag bits:
+        <dl>
+          <dt>KEE_WAKE_SINGLE
+          </dt>
+          <dd>Only wakeup the first matching thread; by default, if
+            multiple threads
+            are waiting, all will be awaking.
+          </dd>
+          <dt>KEE_WAKE_PRIOINCR
+          </dt>
+          <dd>Run the woke threads with higher priority.
+          </dd>
+          <dt>KEE_WAKE_RETDATA
+          </dt>
+          <dd>return data value specified to the KernBlock retdata
+            variable. By default,
+            nothing is returned.
+          </dd>
+        </dl>
+      </dd>
+      <dt>tcnt
+      </dt>
+      <dd>pointer to an ULONG to return the actual number of threads
+        that were woke.
+        Ignored when NULL.
+      </dd>
+      <dt>retdata
+      </dt>
+      <dd>Data to be returned to the unblocked threads. Ignored when
+        KEE_WAKE_RETDATA
+        is not set.
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    I don't know whether the priority increase issued by
+    KEE_WAKE_PRIOINCR is
+    permanent, or only for the current timeslice. It shouldn't be
+    permanent.
+    <h2>KernThunkStackTo16</h2>
+    <h3>Synopsis</h3>
+    <code>VOID APIENTRY KernThunkStackTo16(VOID);</code>
+    <h3>Description</h3>
+    This will convert a 16:32 SS:ESP value to a 16:16 SS:SP value.
+    <h3>Parameters</h3>
+    None.
+    <h3>Comments</h3>
+    I think this is required for correct calling of 16 bit code from the
+    32 bit
+    driver, as 16 bit drivers assume a 16:16 stackpointer.
+    <h2>KernThunkStackTo32</h2>
+    <h3>Synopsis</h3>
+    <code>VOID APIENTRY KernThunkStackTo32(VOID);</code>
+    <h3>Description</h3>
+    This will convert a 16:16 SS:SP back to the 16:32 SS:ESP convention.
+    <h3>Parameters</h3>
+    None.
+    <h3>Comments</h3>
+    This is supposedly to be called after returning from 16 bit code.
+    <h2>KernSerialize16BitDD</h2>
+    <h3>Synopsis</h3>
+    <code>VOID APIENTRY KernSerialize16BitDD(VOID);</code>
+    <h3>Description</h3>
+    This will acquire a special kernel spinlock.
+    <h3>Parameters</h3>
+    None.
+    <h3>Comments</h3>
+    I think, according to the name, this has to be called before
+    accessing a
+    16 bit driver. I wonder though, since you supposedly also have to
+    adjust
+    the stack pointer (KernThunkStackTo16), why both functions haven't
+    been
+    joined in a single call.
+    <h2>KernUnserialize16BitDD</h2>
+    <h3>Synopsis</h3>
+    <code>VOID APIENTRY KernUnserialize16BitDD(VOID);</code>
+    <h3>Description</h3>
+    This releases a special kernel spinlock.
+    <h3>Parameters</h3>
+    None.
+    <h3>Comments</h3>
+    See comments for KernSerialize16BitDD. This apparently needs to be
+    called
+    after returning from a 16 bit driver.
+    <h2>KernArmHook</h2>
+    <h3>Synopsis</h3>
+    <code>VOID APIENTRY KernArmHook(ULONG hook,ULONG data);</code>
+    <h3>Description</h3>
+    This is the 32 bit equivalent of DevHlp_ArmCtxHook.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>hook
+      </dt>
+      <dd>Hook as returned from KernAllocateContextHook.
+      </dd>
+      <dt>data
+      </dt>
+      <dd>Data that is passed to the hook when called.
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    There is no such thing as a DevHlp_FreeCtxHook. I am unsure whether
+    the
+    hook handles are portable between 16 and 32 bit code. At least, this
+    demonstrates that the KEE API has been tailored straight to its use
+    in
+    JFS and DASD, where one probably never needs to release a hook
+    again.
+    <h2>KernAllocateContextHook</h2>
+    <code>APIRET APIENTRY KernAllocateContextHook(PVOID pfHandler,ULONG
+      dummy, PULONG pHook);</code>
+    <h3>Synopsis</h3>
+    <h3>Description</h3>
+    Allocate a new Context hook for use with KernArmHook.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>pfHandler
+      </dt>
+      <dd>This is the address of the hook handler. This is likely a
+        pointer to a 32 bit function.
+      </dd>
+      <dt>dummy
+      </dt>
+      <dd>I don't know why this is there, it is never accessed in the
+        code.
+      </dd>
+      <dt>pHook
+      </dt>
+      <dd>The pointer to an ULONG where the hook handle is returned.
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    See comments for KernArmHook.
+    <h2>KernCopyIn</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernCopyIn(PVOID trgt, PVOID src, ULONG size);</code>
+    <h3>Description</h3>
+    Copy a buffer of user space data into a kernel buffer.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>trgt
+      </dt>
+      <dd>Target buffer address in kernel space.
+      </dd>
+      <dt>src
+      </dt>
+      <dd>Source buffer address in user space.
+      </dd>
+      <dt>size
+      </dt>
+      <dd>number of bytes to copy.
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    Finally, the routine I have waited for for eons...
+    <h2>KernCopyOut</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernCopyOut(PVOID trgt, PVOID src, ULONG
+      size);</code>
+    <h3>Description</h3>
+    Copy a buffer of kernel data into a user space buffer.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>trgt
+      </dt>
+      <dd>Target buffer in user space.
+      </dd>
+      <dt>src
+      </dt>
+      <dd>Source buffer in kernel space.
+      </dd>
+      <dt>size
+      </dt>
+      <dd>number of bytes to copy.
+      </dd>
+    </dl>
+    <h2>KernVMAlloc</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernVMAlloc(ULONG size, ULONG flags, PVOID*
+      linaddr, PVOID* physaddr, PSHORT sel);</code>
+    <h3>Description</h3>
+    This is the equivalent of the DevHlp_VMAlloc function.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>size
+      </dt>
+      <dd>Number of bytes to allocate.
+      </dd>
+      <dt>flags
+      </dt>
+      <dd>One or more of the following flags. See DevHlp_VMAlloc docs
+        for details.
+        <dl>
+          <dt>KEE_VMA_16MB
+          </dt>
+          <dd>allocate memory from below 16MB </dd>
+          <dt>KEE_VMA_FIXED
+          </dt>
+          <dd>allocate memory that won't be swapped out
+          </dd>
+          <dt>KEE_VMA_SWAP
+          </dt>
+          <dd>allocate memory that is swappable
+          </dd>
+          <dt>KEE_VMA_CONTIG
+          </dt>
+          <dd>allocate contiguous physical memory pages
+          </dd>
+          <dt>KEE_VMA_PHYS
+          </dt>
+          <dd>allocate physical memory (pass address in physaddr
+            argument)
+          </dd>
+          <dt>KEE_VMA_PROCESS
+          </dt>
+          <dd>allocate memory in the process address space.
+          </dd>
+          <dt>KEE_VMA_SGSCONT
+          </dt>
+          <dd>register memory under screen group control
+          </dd>
+          <dt>KEE_VMA_GETSEL
+          </dt>
+          <dd>return a GDT selector for the allocated memory. This
+            option exists also
+            in DevHlp_VMAlloc (undocumented).
+          </dd>
+          <dt>KEE_VMA_RESERVE
+          </dt>
+          <dd>Don't commit the allocated memory.
+          </dd>
+          <dt>KEE_VMA_SHARED
+          </dt>
+          <dd>allocate memory that is shareable
+          </dd>
+          <dt>KEE_VMA_USEHIGHMEM
+          </dt>
+          <dd>allocate memory from above 16MB.
+          </dd>
+        </dl>
+      </dd>
+      <dt>linaddr
+      </dt>
+      <dd>address of a variable to receive the linear address of the
+        memory.
+      </dd>
+      <dt>physaddr
+      </dt>
+      <dd>address of a variable that contains the physical address of
+        the memory.
+      </dd>
+      <dt>sel
+      </dt>
+      <dd>address of a variable to receive the allocated GDT selector,
+        when KEE_VMA_GETSEL
+        is set.
+      </dd>
+    </dl>
+    <h2>KernVMFree</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernVMFree(PVOID linaddr);</code>
+    <h3>Description</h3>
+    This frees dynamic memory allocated with KernVMAlloc.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>linaddr
+      </dt>
+      <dd>Address of allocated memory.
+      </dd>
+    </dl>
+    <h2>KernVMLock</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernVMLock(ULONG flags,PVOID linaddr,ULONG
+      size, KEEVMLOCK* lock, KEEVMPageList* pglist, PULONG pgsize);</code>
+    <h3>Description</h3>
+    This is the equivalent of the DevHlp_VMLock function. See the PDD
+    docs for details.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>flags
+      </dt>
+      <dd>One or more of the following bits:
+        <dl>
+          <dt>KEE_VML_NOTBLOCK
+          </dt>
+          <dd>Don't block the call, if the pages can't be locked.
+          </dd>
+          <dt>KEE_VML_CONTIG
+          </dt>
+          <dd>Pages locked must be contiguous.
+          </dd>
+          <dt>KEE_VML_16M
+          </dt>
+          <dd>Pages must be below 16MB.
+          </dd>
+          <dt>KEE_VML_WRITEABLE
+          </dt>
+          <dd>Pages will be writeable.
+          </dd>
+          <dt>KEE_VML_LONGLOCK
+          </dt>
+          <dd>The lock is for long time.
+          </dd>
+          <dt>KEE_VML_VERIFYONLY
+          </dt>
+          <dd>Verify the accessibility of the region. If
+            KEE_VML_WRITEABLE is set, check for R/W access, else R/O.
+          </dd>
+        </dl>
+      </dd>
+      <dt>linaddr
+      </dt>
+      <dd>linear address of the memory region.
+      </dd>
+      <dt>size
+      </dt>
+      <dd>Size of the memory region.
+      </dd>
+      <dt>lock
+      </dt>
+      <dd>Pointer to a lock data structure that contains the lock
+        information.
+      </dd>
+      <dt>pglist
+      </dt>
+      <dd>Pointer to a pagelist structure, provided by the user
+      </dd>
+      <dt>pgsize
+      </dt>
+      <dd>Pointer to an ULONG where the size of the pagelist structure
+        is
+        returned.
+      </dd>
+    </dl>
+    <h2>KernVMUnlock</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernVMUnlock(KEEVMLOCK* lock);</code>
+    <h3>Description</h3>
+    Unlock a memory region.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>lock
+      </dt>
+      <dd>Pointer to the lock structure used by KernVMLock.
+      </dd>
+    </dl>
+    <h2>KernLinToPageList</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernLinToPageList(PVOID linaddr,ULONG
+      size,KEEVMPageList* list,PULONG pgsize);</code>
+    <h3>Description</h3>
+    Convert a linear address region to a pagelist. This is the
+    equivalent to
+    DevHlp_LinToPageList.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>linaddr
+      </dt>
+      <dd>Address of the linear region
+      </dd>
+      <dt>size
+      </dt>
+      <dd>Length of the linear region
+      </dd>
+      <dt>list
+      </dt>
+      <dd>Address of an array of pagelist elements long enough to
+        receive the
+        pagelist entries.
+      </dd>
+      <dt>pgsize&gt;
+      </dt>
+      <dd>Pointer to an ULONG that contains the number of pagelist
+        entries that were actually stored.
+      </dd>
+    </dl>
+    <h2>KernVMSetMem</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernVMSetMem(ULONG flags, PVOID linaddr, ULONG
+      size);</code>
+    <h3>Description</h3>
+    This is the equivalent of the DevHlp_VMSetMem function.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>flags
+      </dt>
+      <dd>One or more of the following flags:
+        <dl>
+          <dt>KEE_VMS_UNCOMMIT
+          </dt>
+          <dd>Uncommit the region
+          </dd>
+          <dt>KEE_VMS_RESIDENT
+          </dt>
+          <dd>make the region resident
+          </dd>
+          <dt>KEE_VMS_SWAPPABLE
+          </dt>
+          <dd>make the region swappable
+          </dd>
+        </dl>
+      </dd>
+      <dt>linaddr
+      </dt>
+      <dd>Linear address of region
+      </dd>
+      <dt>size
+      </dt>
+      <dd>Size of region
+      </dd>
+    </dl>
+    <h2>KernSelToFlat</h2>
+    <h3>Synopsis</h3>
+    <code>ULONG KernSelToFlat(ULONG addr16);</code>
+    <h3>Description</h3>
+    Convert a 16:16 address to a flat address. Returns the linear flat
+    address.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>addr16
+      </dt>
+      <dd>16:16 pointer
+      </dd>
+    </dl>
+    <h2>KernDynamicAPI</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernDynamicAPI(PVOID addr, ULONG cnt, ULONG
+      dummy, PUSHORT sel);</code>
+    <h3>Description</h3>
+    This is the equivalent of the DevHlp_DynamicAPI function.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>addr
+      </dt>
+      <dd>Address of the routine to be called through this gate.
+      </dd>
+      <dt>cnt
+      </dt>
+      <dd>Number of arguments to be copied from user stack to kernel
+        stack
+      </dd>
+      <dt>dummy
+      </dt>
+      <dd>I don't know what this parameter is for. It is not used in the
+        code.
+      </dd>
+      <dt>sel
+      </dt>
+      <dd>Pointer to a variable where the generated GDT gate selector is
+        returned
+      </dd>
+    </dl>
+    <h2>KernRASSysTrace</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernRASSysTrace(ULONG major,ULONG minor,PVOID
+      buf, ULONG size);</code>
+    <h3>Description</h3>
+    This is the equivalence of the DevHlp_RASTrace function.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>major
+      </dt>
+      <dd>Major number of RAS event
+      </dd>
+      <dt>minor
+      </dt>
+      <dd>Minor number of RAS event
+      </dd>
+      <dt>buf
+      </dt>
+      <dd>buffer to be added to the RAS log
+      </dd>
+      <dt>size
+      </dt>
+      <dd>size of the buffer
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    This is not explained in the PDD reference manual, but in the debug
+    handbook
+    IIRC. Warning: The buffer is assumed to be allocated on the task
+    stack, not
+    as a global variable or a VMAlloc'd memory area.
+    <h2>KernPerfSysTrace</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernPerfSysTrace(ULONG major,ULONG minor,PVOID
+      buf, ULONG size);</code>
+    <h3>Description</h3>
+    This is the equivalent of the DevHlp_Perftrace function used by
+    PerfView.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>major
+      </dt>
+      <dd>Major number of Perf event
+      </dd>
+      <dt>minor
+      </dt>
+      <dd>Minor number of Perf event
+      </dd>
+      <dt>buf
+      </dt>
+      <dd>buffer to be added to the Perf log
+      </dd>
+      <dt>size
+      </dt>
+      <dd>size of the buffer
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    Warning: The buffer is assumed to be allocated on the task stack,
+    not
+    as a global variable or a VMAlloc'd memory area.
+    <h2>KernLockFile</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernLockFile(HFILE hfd,KEEhfile* khfd);</code>
+    <h3>Description</h3>
+    This function converts a user space file handle to a system file
+    table
+    pointer.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>hfd
+      </dt>
+      <dd>User space file handle
+      </dd>
+      <dt>khfd
+      </dt>
+      <dd>Pointer to an variable to return the SFT entry pointer.
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    This is some sort of DosOpen to access user files. This seems to be
+    a kludge
+    required for some feature of JFS.
+    <h2>KernUnLockFile</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernUnLockFile(KEEhfile khfd);</code>
+    <h3>Description</h3>
+    This will return the specified SFT pointer to the system.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>khfd
+      </dt>
+      <dd>SFT pointer.
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    This is some sort of DosClose after a file has been opened with
+    KernLockFile.
+    <h2>KernGetFileSize</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernGetFileSize(KEEhfile khfd,KEEfilesize*
+      sz);</code>
+    <h3>Description</h3>
+    This returns the size of the file designated by KernLockFile.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>khfd
+      </dt>
+      <dd>SFT pointer
+      </dd>
+      <dt>Address of a double long variable to hold the size of the
+        file.
+      </dt>
+      <dd>
+        <br>
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    Like the other SFT related functions, this seems to be a hack for
+    JFS.
+    <h2>KernTestFileCache</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernTestFileCache(KEEhfile khfd);</code>
+    <h3>Description</h3>
+    Check whether the associated IFS for the specified file allows
+    access to
+    the file cache. Return 1 if yes, 0 if not. This seems to be again a
+    special
+    feature for JFS.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>khfd
+      </dt>
+      <dd>SFT pointer
+      </dd>
+    </dl>
+    <h2>KernReadFileAt</h2>
+    <code>APIRET APIENTRY KernReadFileAt(KEEhfile khfd,PVOID buf, QWORD
+      off, ULONG nbytes, PULONG nread);</code>
+    <h3>Synopsis</h3>
+    <h3>Description</h3>
+    This reads the content of a file into a buffer.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>khfd
+      </dt>
+      <dd>SFT pointer
+      </dd>
+      <dt>buf
+      </dt>
+      <dd>buffer to read data into
+      </dd>
+      <dt>off
+      </dt>
+      <dd>Offset in file to start reading
+      </dd>
+      <dt>nbytes
+      </dt>
+      <dd>Number of bytes to read
+      </dd>
+      <dt>nread
+      </dt>
+      <dd>Pointer to an ULONG to receive the number of bytes actually
+        read.
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    <h2>KernReadFileAtCache</h2>
+    <code>APIRET APIENTRY KernReadFileAtCache(KEEhfile
+      khfd,KEECachePages** ptr, QWORD off, ULONG nbytes, PULONG nread);</code>
+    <h3>Synopsis</h3>
+    <h3>Description</h3>
+    This seems to do the same as KernReadAtFile, but reads from the
+    cache and
+    returns the corresponding pages of the cache data structure.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>khfd
+      </dt>
+      <dd>SFT pointer
+      </dd>
+      <dt>ptr
+      </dt>
+      <dd>Pointer to a variable the receives the cache data structure
+        for the
+        specified data blocks.
+      </dd>
+      <dt>off
+      </dt>
+      <dd>Offset in file to start reading
+      </dd>
+      <dt>nbytes
+      </dt>
+      <dd>Number of bytes to read
+      </dd>
+      <dt>nread
+      </dt>
+      <dd>Pointer to an ULONG to receive the number of bytes actually
+        read.
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    Yet another JFS hack. Meanwhile I understand why IBM is reluctant to
+    provide JFS support for Warp 4.
+    <h2>KernReturnFileCache</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernReturnFileCache(KEEhfile
+      khfd,KEECachePages* ptr);</code>
+    <h3>Description</h3>
+    This appears to be the "free" function to return the ptr structure
+    from
+    KernReadFileAtCache back to the system.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>khfd
+      </dt>
+      <dd>SFT pointer
+      </dd>
+      <dt>ptr
+      </dt>
+      <dd>Pointer to a previously received cache data structure.
+      </dd>
+    </dl>
+    <h2>KernCreateUconvObject</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernCreateUconvObject(USHORT codepage,
+      KEEUnicodeStruct* ucs);</code>
+    <h3>Description</h3>
+    This initializes a data structure related to Unicode conversion.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>codepage
+      </dt>
+      <dd>Codepage for the data structure.
+      </dd>
+      <dt>ucs
+      </dt>
+      <dd>Pointer to the unicode conversion structure created.
+      </dd>
+    </dl>
+    <h3>Comments</h3>
+    Finally, this seems to be Unicode support in the kernel...
+    <h2>KernStrFromUcs</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernStrFromUcs(KEEUnicodeStruct* ucs, PCHAR
+      trgt, PCHAR usrc, ULONG trgtsize, ULONG srcsize);</code>
+    <h3>Description</h3>
+    This converts a string from Unicode to ASCII.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>ucs
+      </dt>
+      <dd>Pointer to the Unicode conversion object created with
+        KernCreateUconvObject.
+      </dd>
+      <dt>trgt
+      </dt>
+      <dd>Pointer to the ASCII buffer
+      </dd>
+      <dt>usrc
+      </dt>
+      <dd>Pointer to the Unicode buffer
+      </dd>
+      <dt>trgtsize
+      </dt>
+      <dd>length of the target buffer
+      </dd>
+      <dt>srcsize
+      </dt>
+      <dd>length of the source buffer
+      </dd>
+    </dl>
+    <h2>KernStrToUcs</h2>
+    <h3>Synopsis</h3>
+    <code>APIRET APIENTRY KernStrToUcs(KEEUnicodeStruct* ucs, PCHAR
+      utrgt, PCHAR src, ULONG trgtsize,ULONG srcsize);</code>
+    <h3>Description</h3>
+    This converts a string from ASCII to Unicode.
+    <h3>Parameters</h3>
+    <dl>
+      <dt>ucs
+      </dt>
+      <dd>Pointer to the Unicode conversion object created with
+        KernCreateUconvObject.
+      </dd>
+      <dt>utrgt
+      </dt>
+      <dd>Pointer to the Unicode buffer
+      </dd>
+      <dt>src
+      </dt>
+      <dd>Pointer to the ASCII buffer
+      </dd>
+      <dt>trgtsize
+      </dt>
+      <dd>length of the target buffer
+      </dd>
+      <dt>srcsize
+      </dt>
+      <dd>length of the source buffer
+      </dd>
+    </dl>
+  </body>
+</html>
