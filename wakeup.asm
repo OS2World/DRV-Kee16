@@ -36,7 +36,6 @@ label32 LABEL FAR32
        push esi
        push edi
        push ds
-       push es
        mov  eax,DOS32FLATDS
        mov  ds,eax                      ; KEE functions need flat selector set in DS
        mov  es,eax                      ; W4 kernel also needs flat selector set in ES !
@@ -53,7 +52,6 @@ label32 LABEL FAR32
        call KernThunkStackTo16          ; trashes eax,edx
        mov  eax,ebx
        shld edx,eax,16                  ; dx:ax = eax = return code
-       pop es
        pop ds
        pop edi
        pop esi
